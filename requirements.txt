@@ -6,3 +6,4 @@ matplotlib
 folium
 streamlit_folium
 folium.plugins
+seaborn
