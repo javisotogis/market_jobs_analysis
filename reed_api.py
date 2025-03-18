@@ -2,11 +2,13 @@ import requests
 import base64
 import csv
 import time  # To avoid too many rapid requests
-from credentials import api_key
-# Replace with your real API Key
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 # Replace with your real API Key
-API_KEY = api_key
+API_KEY = os.getenv("API_KEY")
+# Replace with your real API Key
 time_sleep = 0.25
 
 def get_reed_jobs(job_title, location, total_results=10000, results_per_page=100):

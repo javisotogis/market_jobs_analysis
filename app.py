@@ -46,8 +46,8 @@ if page == "Job Statistics":
             st.markdown(f"""
             <div style="padding:10px; border-radius:10px; background-color:#f8f9fa; box-shadow:2px 2px 10px rgba(0,0,0,0.1); margin-bottom:10px;">
                 <h3>{row['job_position']} - {row['location']}</h3>
-                <p><strong>Avg Min Salary:</strong> ${row['minimumSalary']:,.2f}</p>
-                <p><strong>Avg Max Salary:</strong> ${row['maximumSalary']:,.2f}</p>
+                <p><strong>Avg Min Salary:</strong> £{row['minimumSalary']:,.2f}</p>
+                <p><strong>Avg Max Salary:</strong> £{row['maximumSalary']:,.2f}</p>
                 <p><strong>Number of Jobs:</strong> {row['number_of_jobs']}</p>
             </div>
             """, unsafe_allow_html=True)
