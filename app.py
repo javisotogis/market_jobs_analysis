@@ -1,69 +1,158 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 import folium
-import seaborn as sns
 from streamlit_folium import folium_static
 from folium.plugins import MarkerCluster
 
 # Load the data
 df = pd.read_csv(r"tmp_outputs/df_lat_long.csv")
 
-# Ensure expirationDate column is a string (in case it's read as a float)
+# Ensure expirationDate column is a string
 df["expirationDate"] = df["expirationDate"].astype(str)
 
-# Generate dynamic colors based on unique locations
-unique_locations = df["location"].unique()
-color_palette = ["blue", "green", "red", "purple", "orange", "cyan", "magenta", "yellow"]
+# Define Streamlit layout settings (Wider Page)
+st.set_page_config(layout="wide")
 
-# Assign each location a unique color
-location_colors = {loc: color_palette[i % len(color_palette)] for i, loc in enumerate(unique_locations)}
+# Define job types and locations (Excluding Remote)
+job_types = ["GIS", "Data Analyst"]
+locations = ["England", "Scotland", "Wales", "N. Ireland"]
 
-# Create a new color column in the DataFrame
-df["color"] = df["location"].map(location_colors)
+# Rename "Northern Ireland" to "N. Ireland" in the DataFrame
+df["location"] = df["location"].replace({"Northern Ireland": "N. Ireland"})
 
-# Streamlit Navigation
+# Aggregate job statistics
+aggregated_df = df.groupby(["job_position", "location"]).agg({
+    "minimumSalary": "mean",
+    "maximumSalary": "mean"
+}).reset_index()
+
+# Count the number of jobs per category
+aggregated_df["number_of_jobs"] = df.groupby(["job_position", "location"]).size().values
+
+# Compute UK-wide insights per job position
+uk_wide_stats = df.groupby("job_position").agg({
+    "minimumSalary": "mean",
+    "maximumSalary": "mean"
+}).reset_index()
+
+# Add total number of jobs for each job position
+uk_wide_stats["total_jobs"] = df.groupby("job_position").size().values
+
+# Sidebar Navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", ["Job Statistics", "Job Map"])
 
 # === JOB STATISTICS PAGE === #
 if page == "Job Statistics":
-    st.title("Job Market Dashboard")
+    st.title("Comparing GIS and Data Analyst Jobs in the UK")
 
-    # Aggregate the data
-    aggregated_df = df.groupby(["job_position", "location"]).agg({
-        "minimumSalary": "mean",
-        "maximumSalary": "mean"
-    }).reset_index()
+    st.markdown("""
+---
+📢 **Disclaimer:**  
+The job data presented in this dashboard is sourced from the **Reed Jobs website**.  
+This data is **not updated in real-time** and represents a snapshot of job listings at the time of data collection.
+""")
 
-    # Count number of jobs per category
-    aggregated_df["number_of_jobs"] = df.groupby(["job_position", "location"]).size().values
 
-    # Display Cards
-    st.subheader("Job Statistics Overview")
-    for index, row in aggregated_df.iterrows():
-        with st.container():
+    # ===== UK-WIDE INSIGHTS PER JOB POSITION ===== #
+    st.subheader("UK-Wide Insights for GIS and Data Analyst Jobs")
+
+    # Create two cards for each job position (GIS & Data Analyst)
+    uk_insight_cols = st.columns(2)  # Two cards in one row
+
+    for i, job in enumerate(job_types):
+        job_data = uk_wide_stats[uk_wide_stats["job_position"].str.contains(job, case=False, na=False)]
+        
+        if not job_data.empty:
+            avg_min_salary = f"£{job_data['minimumSalary'].values[0]:,.2f}"
+            avg_max_salary = f"£{job_data['maximumSalary'].values[0]:,.2f}"
+            total_jobs = job_data["total_jobs"].values[0]
+        else:
+            avg_min_salary = "No data available"
+            avg_max_salary = "No data available"
+            total_jobs = 0
+
+        with uk_insight_cols[i]:
             st.markdown(f"""
-            <div style="padding:10px; border-radius:10px; background-color:#f8f9fa; box-shadow:2px 2px 10px rgba(0,0,0,0.1); margin-bottom:10px;">
-                <h3>{row['job_position']} - {row['location']}</h3>
-                <p><strong>Avg Min Salary:</strong> £{row['minimumSalary']:,.2f}</p>
-                <p><strong>Avg Max Salary:</strong> £{row['maximumSalary']:,.2f}</p>
-                <p><strong>Number of Jobs:</strong> {row['number_of_jobs']}</p>
+            <div style="padding:15px; border-radius:10px; background-color:#f8f9fa; 
+                        box-shadow:2px 2px 10px rgba(0,0,0,0.1); text-align:center;">
+                <h3 style="color:#007bff;">{job} Jobs (UK)</h3>
+                <p style="font-size:16px;"><strong>Avg Min Salary:</strong> {avg_min_salary}</p>
+                <p style="font-size:16px;"><strong>Avg Max Salary:</strong> {avg_max_salary}</p>
+                <p style="font-size:16px;"><strong>Total Jobs:</strong> {total_jobs}</p>
             </div>
             """, unsafe_allow_html=True)
 
-    # Visualizations
+    # ===== JOB-SPECIFIC NATION CARDS ===== #
+    def display_cards(job_type):
+        st.subheader(f"{job_type} Jobs")
+
+        # Filter data for the job type
+        filtered_df = aggregated_df[aggregated_df["job_position"].str.contains(job_type, case=False, na=False)]
+
+        # Create columns for the four nations
+        cols = st.columns([1.5, 1.5, 1.5, 1.5])
+
+        for i, location in enumerate(locations):
+            location_data = filtered_df[filtered_df["location"] == location]
+
+            if not location_data.empty:
+                row = location_data.iloc[0]
+                min_salary = f"£{row['minimumSalary']:,.2f}" if not pd.isna(row['minimumSalary']) else "No data available"
+                max_salary = f"£{row['maximumSalary']:,.2f}" if not pd.isna(row['maximumSalary']) else "No data available"
+                num_jobs = row["number_of_jobs"]
+            else:
+                min_salary = "No data available"
+                max_salary = "No data available"
+                num_jobs = 0
+
+            # Display the card
+            with cols[i]:
+                st.markdown(f"""
+                <div style="padding:12px; border-radius:10px; background-color:#f8f9fa; 
+                            box-shadow:2px 2px 10px rgba(0,0,0,0.1); text-align:center;
+                            width: 100%; margin: auto;">
+                    <h4 style="color:#007bff; font-size:16px;">{location}</h4>
+                    <p style="font-size:14px;"><strong>Type:</strong> {job_type}</p>
+                    <p style="font-size:14px;"><strong>Avg Min Salary:</strong> {min_salary}</p>
+                    <p style="font-size:14px;"><strong>Avg Max Salary:</strong> {max_salary}</p>
+                    <p style="font-size:14px;"><strong>Number of Jobs:</strong> {num_jobs}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # Display GIS Jobs in the first row
+    display_cards("GIS")
+
+    # Display Data Analyst Jobs in the second row
+    display_cards("Data Analyst")
+
+    # === PLOTLY VISUALIZATIONS === #
     st.subheader("Salary Distribution by Job Position")
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.barplot(data=aggregated_df, x="job_position", y="minimumSalary", hue="location", ax=ax)
-    ax.set_title("Average Minimum Salary by Job Position")
-    st.pyplot(fig)
+    # Interactive Bar Chart for Minimum Salary
+    fig_min = px.bar(
+        aggregated_df,
+        x="job_position",
+        y="minimumSalary",
+        color="location",
+        title="Average Minimum Salary by Job Position",
+        labels={"minimumSalary": "Avg Min Salary (£)"},
+        barmode="group"
+    )
+    st.plotly_chart(fig_min, use_container_width=True)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.barplot(data=aggregated_df, x="job_position", y="maximumSalary", hue="location", ax=ax)
-    ax.set_title("Average Maximum Salary by Job Position")
-    st.pyplot(fig)
+    # Interactive Bar Chart for Maximum Salary
+    fig_max = px.bar(
+        aggregated_df,
+        x="job_position",
+        y="maximumSalary",
+        color="location",
+        title="Average Maximum Salary by Job Position",
+        labels={"maximumSalary": "Avg Max Salary (£)"},
+        barmode="group"
+    )
+    st.plotly_chart(fig_max, use_container_width=True)
 
 # === JOB MAP PAGE === #
 elif page == "Job Map":
@@ -82,11 +171,9 @@ elif page == "Job Map":
         marker_cluster = MarkerCluster().add_to(m)
 
         for _, row in df_clean.iterrows():
-            job_type = row["job_position"]
-            color = row["color"]
             lat, lon = row["latitude"], row["longitude"]
 
-            # Create popup with full job details
+            # Create popup with job details
             popup_text = f"""
                 <b>Job Position:</b> {row['job_position']}<br>
                 <b>Location:</b> {row['location']}<br>
@@ -96,11 +183,11 @@ elif page == "Job Map":
                 <b>Expiration Date:</b> {row['expirationDate']}<br>
             """
 
-            # Add individual markers with popups inside MarkerCluster
+            # Add markers
             folium.Marker(
                 location=[lat, lon],
                 popup=folium.Popup(popup_text, max_width=300),
-                icon=folium.Icon(color=color)
+                icon=folium.Icon(color="blue")
             ).add_to(marker_cluster)
 
         # Show the map
